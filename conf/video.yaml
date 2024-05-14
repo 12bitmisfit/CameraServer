@@ -1,0 +1,16 @@
+streams:
+  - name: "Stream1"
+    url: "http://localhost:8080/video"
+    output_enabled: false
+    output_resolution: [640, 480]
+    output_fps: 25
+    output_dir: "./videos/stream1"
+    length: 60  # seconds
+
+  - name: "Stream2"
+    url: "http://localhost:8081/video"
+    output_enabled: false
+    output_resolution: [640, 480]
+    output_fps: 25
+    output_dir: "./videos/stream2"
+    length: 60  # seconds

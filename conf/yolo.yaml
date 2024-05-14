@@ -1,0 +1,17 @@
+model_path: "models/yolo/yolov8x-pose.pt"
+video_source: 0  # Use 0 for default webcam
+infer_half_precision: true  # Use half precision for inference
+confidence_threshold: 0.4  # Minimum confidence threshold for detections
+iou_threshold: 0.7  # IoU threshold for NMS
+# yolo model will handle rounding + aspect ratio
+scale_factor: 4  # Scale factor to divide image size by; 1 means no scaling
+device: "cuda:0"  # Device for inference ("cpu" or "cuda:x")
+max_detections: 300  # Maximum number of detections per image
+frame_stride: 1  # Frame stride for video inputs
+buffer_streams: false  # Buffering strategy for video streams
+visualize_features: false  # Visualize model features during inference
+enable_augmentation: false  # Enable test-time augmentation
+agnostic_nms_enabled: false  # Enable class-agnostic NMS
+target_classes: null  # Filter detections to these class IDs
+high_res_masks: false  # Use high-resolution masks if available
+feature_layers: null  # Layers for feature extraction, if enabled model ONLY outputs embeddings
