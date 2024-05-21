@@ -23,7 +23,7 @@ def share_frame(stream_config, frame, shared_raw_frames, lock, current_time):
         print(f"A video error occurred: {e}")
 
 
-def opencv(stream_config, shared_raw_frames, lock):
+def opncv(stream_config, shared_raw_frames, lock):
     while True:
         try:
             cap = cv2.VideoCapture(stream_config['url'])
