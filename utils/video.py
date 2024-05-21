@@ -3,63 +3,74 @@ import time
 import os
 
 
-def process_stream(stream_config, shared_raw_frames, lock):
-    cap = cv2.VideoCapture(stream_config['url'])
-    if not cap.isOpened():
-        print(f"Failed to open video stream: {stream_config['url']}")
-        return
+def create_video_writer(stream_config, output_fps):
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    date_path = time.strftime("%Y/%m/%d/")
+    base_path = os.path.join(stream_config['output_dir'], stream_config['name'], date_path)
+    os.makedirs(base_path, exist_ok=True)
+    file_name = f"{stream_config['name']}_output_{timestamp.split('-')[1]}.avi"
+    out_path = os.path.join(base_path, file_name)
+    fourcc = cv2.VideoWriter.fourcc(*'MJPG')
+    return cv2.VideoWriter(out_path, fourcc, output_fps, tuple(stream_config['output_resolution']))
 
-    output_fps = stream_config['output_fps']
-    output_frame_period = 1.0 / output_fps
-    shared_frame_period = 1
-    next_output_time = time.time() + output_frame_period
-    next_shared_time = time.time() + shared_frame_period
 
-    total_frames = int(output_fps * stream_config['length'])
+def share_frame(stream_config, frame, shared_raw_frames, lock, current_time):
+    try:
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        with lock:
+            shared_raw_frames[stream_config['name']]['raw_frame'] = (rgb_frame, current_time)
+    except Exception as e:
+        print(f"A video error occurred: {e}")
 
+
+def opencv(stream_config, shared_raw_frames, lock):
     while True:
-        segment_frames = 0
-        out = None
+        try:
+            cap = cv2.VideoCapture(stream_config['url'])
+            if not cap.isOpened():
+                raise Exception("Failed to open video capture")
+            output_fps = stream_config['output_fps']
+            output_frame_period = 1.0 / output_fps
+            shared_frame_period = 1.0
+            next_output_time = time.time() + output_frame_period
+            next_shared_time = time.time() + shared_frame_period
 
-        while segment_frames < total_frames:
-            ret, frame = cap.read()
-            if not ret:
-                print("No frame read from the stream")
-                continue  # Skip the frame processing if no frame is read
+            total_frames = int(output_fps * stream_config['length'])
 
-            current_time = time.time()
-            if current_time >= next_output_time:
-                if segment_frames % total_frames == 0 or out is None:
-                    if out is not None:
-                        out.release()
-                    timestamp = time.strftime("%Y%m%d-%H%M%S")
-                    date_path = time.strftime("%Y/%m/%d/")
-                    base_path = os.path.join(stream_config['output_dir'], stream_config['name'], date_path)
-                    os.makedirs(base_path, exist_ok=True)
-                    file_name = f"{stream_config['name']}_output_{timestamp.split('-')[1]}.avi"
-                    out_path = os.path.join(base_path, file_name)
-                    fourcc = cv2.VideoWriter.fourcc(*'MJPG')
-                    out = cv2.VideoWriter(out_path, fourcc, output_fps, tuple(stream_config['output_resolution']))
+            while True:
+                segment_frames = 0
+                out = None
 
-                if stream_config['output_enabled']:
-                    output_frame = cv2.resize(frame, tuple(stream_config['output_resolution']))
-                    out.write(output_frame)
+                while segment_frames < total_frames:
+                    ret, frame = cap.read()
+                    if not ret:
+                        print("No frame read from the stream")
+                        break
 
-                next_output_time += output_frame_period
-                segment_frames += 1
+                    current_time = time.time()
+                    if current_time >= next_output_time:
+                        if segment_frames % total_frames == 0 or out is None:
+                            if out is not None:
+                                out.release()
+                            out = create_video_writer(stream_config, output_fps)
 
-            if current_time >= next_shared_time:
-                try:
-                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    with lock:
-                        shared_raw_frames[stream_config['name']]['raw_frame'] = (rgb_frame, current_time)
-                    next_shared_time += shared_frame_period
-                except Exception as e:
-                    print(f"A video error occurred: {e}")
-                    continue
+                        if stream_config['output_enabled']:
+                            output_frame = cv2.resize(frame, tuple(stream_config['output_resolution']))
+                            out.write(output_frame)
 
-        if out:
-            out.release()
-        cap.release()  # Ensure the capture is released outside the loop
+                        next_output_time += output_frame_period
+                        segment_frames += 1
 
+                    if current_time >= next_shared_time:
+                        share_frame(stream_config, frame, shared_raw_frames, lock, current_time)
+                        next_shared_time += shared_frame_period
+
+                if out:
+                    out.release()
+                cap.release()
+                break
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            time.sleep(1)
 

@@ -1,63 +1,53 @@
 import yaml
 import time
 from multiprocessing import Process, Manager
-from utils.video import process_stream
-from utils.yolo import process_frame
-from utils.tracker2 import reid_process
+from utils.video import opncv
+from utils.yolo import yolo
+from utils.tracker2 import reid
+
+
+def load_config(file_path):
+    with open(file_path, 'r') as file:
+        return yaml.safe_load(file)
+
+
+def start_process(target, args):
+    process = Process(target=target, args=args)
+    process.start()
+    return process
+
 
 def main():
-    with open('conf/video.yaml', 'r') as file:
-        stream_config = yaml.safe_load(file)
-    with open('conf/yolo.yaml', 'r') as f:
-        yolo_config = yaml.safe_load(f)
+    stream_config = load_config('conf/video.yaml')
+    yolo_config = load_config('conf/yolo.yaml')
+    reid_config = load_config('conf/reid.yaml')
+
     with Manager() as manager:
-        shared_raw_frames = manager.dict()
-        shared_annotated_frames = manager.dict()
-        shared_cropped_frames = manager.dict()
-        shared_tracking_frames = manager.dict()
+        shared_raw = manager.dict()
+        shared_anno = manager.dict()
+        shared_crop = manager.dict()
+        shared_track = manager.dict()
+
         for stream in stream_config['streams']:
-            shared_raw_frames[stream['name']] = manager.dict()
-            shared_annotated_frames[stream['name']] = manager.dict()
-            shared_cropped_frames[stream['name']] = manager.dict()
-            shared_tracking_frames[stream['name']] = manager.dict()
+            shared_raw[stream['name']] = manager.dict()
+            shared_anno[stream['name']] = manager.dict()
+            shared_crop[stream['name']] = manager.dict()
+            shared_track[stream['name']] = manager.dict()
 
-
-        lock = manager.Lock()  # Create a lock
+        lock = manager.Lock()
         processes = []
 
-        # Start yolo process
-        p = Process(target=process_frame, args=(yolo_config,
-                                                shared_raw_frames,
-                                                shared_annotated_frames,
-                                                shared_cropped_frames,
-                                                lock
-                                                ))
-        p.start()
-        processes.append(p)
-
-        # Start tracker process
-        p = Process(target=reid_process, args=(yolo_config,
-                                               shared_cropped_frames,
-                                               shared_tracking_frames,
-                                               lock
-                                               ))
-        p.start()
-        processes.append(p)
-
-        # Start stream handlers
         for stream in stream_config['streams']:
-            p = Process(target=process_stream, args=(stream,
-                                                     shared_raw_frames,
-                                                     lock
-                                                     ))
-            p.start()
-            processes.append(p)
+            processes.append(start_process(opncv, (stream, shared_raw, lock)))
+
+        processes.append(start_process(yolo, (yolo_config, shared_raw, shared_anno, shared_crop, lock)))
+        processes.append(start_process(reid, (reid_config, shared_crop, shared_track, lock)))
 
         try:
             while True:
                 time.sleep(1)
-                for stream_name in shared_raw_frames.keys():
-                    print(f"{stream_name} has {len(shared_cropped_frames[stream_name])} people in frame")
+                for stream_name in shared_raw.keys():
+                    print(f"{stream_name} has {len(shared_crop[stream_name])} people in frame")
         except KeyboardInterrupt:
             pass
         finally:
