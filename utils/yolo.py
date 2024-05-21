@@ -1,16 +1,28 @@
 from ultralytics import YOLO
 import time
-import torchreid
+
 
 def process_frame(yolo_config, shared_raw_frames, shared_annotated_frames, shared_cropped_frames, lock):
     model = YOLO(yolo_config['model_path'])
     time_tracking = {}
-    with lock:
-        local_frames = shared_raw_frames
+    cropped_dict = {}
+    annotated_dict = {}
+    while True:
+        try:
+            with lock:
+                local_frames = shared_raw_frames.copy()
 
-    # fill initial data
-    for stream_name in local_frames.keys():
-        time_tracking[stream_name] = local_frames[stream_name]['raw_frame'][1]
+            # fill initial data
+            for stream_name in local_frames.keys():
+                time_tracking[stream_name] = local_frames[stream_name]['raw_frame'][1]
+                cropped_dict[stream_name] = {"cropped_images": []}
+                annotated_dict[stream_name] = {"annotated_images": []}
+            # Exit the loop if successful
+            break
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            time.sleep(1)  # Optional: wait before retrying
 
     # main loop
     while True:
@@ -38,9 +50,10 @@ def process_frame(yolo_config, shared_raw_frames, shared_annotated_frames, share
                                     embed=yolo_config['feature_layers'])
 
                     # (frame, timestamp_of_raw_frame) + initializing cropped images
-                    local_frames[stream_name]['annotated_frame'] = (
-                        results[0].plot(), local_frames[stream_name]['raw_frame'][1])
-                    local_frames[stream_name]['cropped_frames'] = []
+                    annotated_dict[stream_name]['annotated_frame'] = (
+                        results[0].plot(), local_frames[stream_name]['raw_frame'][0])
+
+                    cropped_dict[stream_name]['cropped_frames'] = []
 
                     for result in results:
                         for i, box in enumerate(result.boxes):
@@ -48,15 +61,16 @@ def process_frame(yolo_config, shared_raw_frames, shared_annotated_frames, share
                             x1, y1, x2, y2 = int(box.xyxy[0, 0]), int(box.xyxy[0, 1]), int(box.xyxy[0, 2]), int(
                                 box.xyxy[0, 3])
                             cropped_frame = local_frames[stream_name]['raw_frame'][0][y1:y2, x1:x2]
-                            local_frames[stream_name]['cropped_frames'].append(cropped_frame)
+                            cropped_dict[stream_name]['cropped_frames'].append(cropped_frame)
             # update shared dicts
             with lock:
                 for stream_name in local_frames.keys():
-                    shared_annotated_frames[stream_name]['annotated_frame'] = local_frames[stream_name]['annotated_frame']
-                    shared_cropped_frames[stream_name]['cropped_frames'] = local_frames[stream_name]['cropped_frames']
-                local_frames = shared_raw_frames
+                    shared_annotated_frames[stream_name] = annotated_dict[stream_name][
+                        'annotated_frame']
+                    shared_cropped_frames[stream_name] = cropped_dict[stream_name]['cropped_frames']
+                local_frames = shared_raw_frames.copy()
 
         except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"A yolo error occurred: {e}")
             time.sleep(1)
             continue
