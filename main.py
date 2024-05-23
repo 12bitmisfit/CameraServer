@@ -3,7 +3,7 @@ import time
 from multiprocessing import Process, Manager
 from utils.video import opncv
 from utils.yolo import yolo
-from utils.tracker2 import reid
+from utils.tracker import reid
 
 
 def load_config(file_path):

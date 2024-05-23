@@ -3,7 +3,7 @@ import time
 
 
 def yolo(yolo_config, shared_raw_frames, shared_annotated_frames, shared_cropped_frames, lock):
-    model = YOLO(yolo_config['model_path'])
+    model = YOLO(yolo_config['model_path'], verbose=False)
     time_tracking = {}
     cropped_dict = {}
     annotated_dict = {}
@@ -46,7 +46,8 @@ def yolo(yolo_config, shared_raw_frames, shared_annotated_frames, shared_cropped
                         agnostic_nms=yolo_config['agnostic_nms_enabled'],
                         classes=yolo_config['target_classes'],
                         retina_masks=yolo_config['high_res_masks'],
-                        embed=yolo_config['feature_layers']
+                        embed=yolo_config['feature_layers'],
+                        verbose=False
                     )
 
                     annotated_dict[stream_name]['annotated_frame'] = (

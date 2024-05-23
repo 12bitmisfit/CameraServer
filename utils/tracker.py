@@ -47,18 +47,17 @@ def load_people(base_path='./db/'):
     return people
 
 
-def reid_process(tracker_config, shared_cropped_frames, shared_tracking_frames, lock):
+def reid(tracker_config, shared_cropped_frames, shared_tracking_frames, lock):
+    torchreid.models.show_avai_models()
     extractor = torchreid.utils.FeatureExtractor(
-        tracker_config['model_name'],
-        tracker_config['model_path'],
-        tracker_config['device']
+        model_name=tracker_config['model_name'],
+        model_path=tracker_config['model_path'],
+        device=tracker_config['device']
     )
     if tracker_config['dataset_dir'][:-1] == "/":
         people = load_people(tracker_config['dataset_dir'])
     else:
         people = load_people(tracker_config['dataset_dir'] + "/")
-    known_people = people['known']
-    unknown_people = people['unknown']
 
     while True:
         try:
@@ -74,12 +73,12 @@ def reid_process(tracker_config, shared_cropped_frames, shared_tracking_frames, 
                     normalized_features = torch.nn.functional.normalize(features, p=2, dim=1)
 
                     for idx, (cropped_image, feature) in enumerate(zip(cropped_frames, normalized_features)):
-                        now = datetime.now().strftime("%m_%d_%y_%H%M")
+                        now = datetime.now().strftime("%m_%d_%y_%H%M%S_%f")[:-3]
                         max_similarity = 0
                         best_match = None
                         folder_type = 'unknown'
 
-                        for known_person, known_features in known_people.items():
+                        for known_person, known_features in people['known'].items():
                             similarity = torch.mm(feature.unsqueeze(0), known_features.t())
                             current_similarity = similarity.max().item()
                             if current_similarity > max_similarity:
@@ -88,8 +87,9 @@ def reid_process(tracker_config, shared_cropped_frames, shared_tracking_frames, 
 
                         if max_similarity > tracker_config['known_threshold']:
                             folder_type = 'known'
+                            print(f"best known match: {best_match}, max_sim: {max_similarity}")
                         else:
-                            for unknown_person, unknown_features in unknown_people.items():
+                            for unknown_person, unknown_features in people['unknown'].items():
                                 similarity = torch.mm(feature.unsqueeze(0), unknown_features.t())
                                 current_similarity = similarity.max().item()
                                 if current_similarity > max_similarity:
@@ -97,24 +97,25 @@ def reid_process(tracker_config, shared_cropped_frames, shared_tracking_frames, 
                                     best_match = unknown_person
 
                             if max_similarity < tracker_config['unknown_threshold']:
-                                best_match = f'unknown{len(unknown_people) + 1}'
-                                unknown_people[best_match] = feature.unsqueeze(0)
+                                best_match = f'unknown{len(people['unknown']) + 1}'
+                                people['unknown'][best_match] = feature.unsqueeze(0)
                                 folder_type = 'unknown'
 
+                        print(f"best_match: {best_match}, max_sim = {max_similarity}")
                         if max_similarity < tracker_config['no_update_threshold']:
                             folder_path = f'{tracker_config["dataset_dir"]}/{folder_type}/{best_match}'
                             save_image_and_tensor(cropped_image, feature, folder_path, now)
 
                             if folder_type == 'known':
-                                if best_match in known_people:
-                                    known_people[best_match] = torch.cat((known_people[best_match], feature.unsqueeze(0)), dim=0)
+                                if best_match in people['known']:
+                                    people['known'][best_match] = torch.cat((people['known'][best_match], feature.unsqueeze(0)), dim=0)
                                 else:
-                                    known_people[best_match] = feature.unsqueeze(0)
+                                    people['known'][best_match] = feature.unsqueeze(0)
                             else:
-                                if best_match in unknown_people:
-                                    unknown_people[best_match] = torch.cat((unknown_people[best_match], feature.unsqueeze(0)), dim=0)
+                                if best_match in people['unknown']:
+                                    people['unknown'][best_match] = torch.cat((people['unknown'][best_match], feature.unsqueeze(0)), dim=0)
                                 else:
-                                    unknown_people[best_match] = feature.unsqueeze(0)
+                                    people['unknown'][best_match] = feature.unsqueeze(0)
 
                         local_tracking[stream_name]['people'].append((best_match, feature, max_similarity))
 
