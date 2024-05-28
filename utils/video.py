@@ -1,6 +1,7 @@
 import cv2
 import time
 import os
+import zmq
 
 
 def create_video_writer(stream_config, output_fps):
@@ -14,16 +15,11 @@ def create_video_writer(stream_config, output_fps):
     return cv2.VideoWriter(out_path, fourcc, output_fps, tuple(stream_config['output_resolution']))
 
 
-def share_frame(stream_config, frame, shared_raw_frames, lock, current_time):
-    try:
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        with lock:
-            shared_raw_frames[stream_config['name']]['raw_frame'] = (rgb_frame, current_time)
-    except Exception as e:
-        print(f"A video error occurred: {e}")
+def opncv(stream_config):
+    context = zmq.Context()
+    raw_socket = context.socket(zmq.PUB)
+    raw_socket.bind(f"tcp://{stream_config['ip']}:{stream_config['port']}")
 
-
-def opncv(stream_config, shared_raw_frames, lock):
     while True:
         try:
             cap = cv2.VideoCapture(stream_config['url'])
@@ -62,7 +58,9 @@ def opncv(stream_config, shared_raw_frames, lock):
                         segment_frames += 1
 
                     if current_time >= next_shared_time:
-                        share_frame(stream_config, frame, shared_raw_frames, lock, current_time)
+                        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        msg = {'stream_name': stream_config['name'], 'frame': rgb_frame.tolist(), 'timestamp': current_time}
+                        raw_socket.send_json(msg)
                         next_shared_time += shared_frame_period
 
                 if out:
@@ -73,4 +71,3 @@ def opncv(stream_config, shared_raw_frames, lock):
         except Exception as e:
             print(f"An error occurred: {e}")
             time.sleep(1)
-

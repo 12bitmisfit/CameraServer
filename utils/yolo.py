@@ -1,42 +1,57 @@
 from ultralytics import YOLO
 import time
+import zmq
+import numpy as np
+import os
 
 
-def yolo(yolo_config, shared_raw_frames, shared_annotated_frames, shared_cropped_frames, lock):
+def yolo(yolo_config):
+    os.environ['YOLO_VERBOSE'] = 'False'
     model = YOLO(yolo_config['model_path'], verbose=False)
-    time_tracking = {}
-    cropped_dict = {}
-    annotated_dict = {}
+    context = zmq.Context()
+
+    # Connect to multiple raw frame publishers
+    raw_sub_sockets = []
+    for port in yolo_config['raw_ports']:
+        raw_sub_socket = context.socket(zmq.SUB)
+        raw_sub_socket.connect(f"tcp://{yolo_config['ip']}:{port}")
+        raw_sub_socket.setsockopt_string(zmq.SUBSCRIBE, '')
+        raw_sub_sockets.append(raw_sub_socket)
+
+    anno_socket = context.socket(zmq.PUB)
+    anno_socket.bind(f"tcp://{yolo_config['ip']}:{yolo_config['anno_port']}")
+
+    crop_socket = context.socket(zmq.PUB)
+    crop_socket.bind(f"tcp://{yolo_config['ip']}:{yolo_config['crop_port']}")
+
+    poller = zmq.Poller()
+    for sock in raw_sub_sockets:
+        poller.register(sock, zmq.POLLIN)
 
     while True:
         try:
-            with lock:
-                local_frames = shared_raw_frames.copy()
+            socks = dict(poller.poll())
+            anno_msgs = {}
+            crop_msgs = {}
 
-            for stream_name in local_frames.keys():
-                time_tracking[stream_name] = local_frames[stream_name]['raw_frame'][1]
-                cropped_dict[stream_name] = {"cropped_images": []}
-                annotated_dict[stream_name] = {"annotated_images": []}
-            break
+            for raw_sub_socket in raw_sub_sockets:
+                if raw_sub_socket in socks and socks[raw_sub_socket] == zmq.POLLIN:
+                    msg = raw_sub_socket.recv_json()
+                    stream_name = msg['stream_name']
+                    frame = np.array(msg['frame'], dtype=np.uint8)
+                    timestamp = msg['timestamp']
 
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            time.sleep(1)
-
-    while True:
-        try:
-            for stream_name in local_frames.keys():
-                if local_frames[stream_name]['raw_frame'][1] > time_tracking[stream_name]:
-                    original_height, original_width = local_frames[stream_name]['raw_frame'][0].shape[:2]
+                    # Calculate scaled image size using scale factor
+                    original_height, original_width = frame.shape[:2]
                     scale_factor = yolo_config['scale_factor']
                     scaled_image_size = (int(original_width / scale_factor), int(original_height / scale_factor))
 
                     results = model(
-                        local_frames[stream_name]['raw_frame'][0],
+                        frame,
                         half=yolo_config['infer_half_precision'],
                         conf=yolo_config['confidence_threshold'],
                         iou=yolo_config['iou_threshold'],
-                        imgsz=scaled_image_size,
+                        imgsz=scaled_image_size,  # Use scaled image size
                         device=yolo_config['device'],
                         max_det=yolo_config['max_detections'],
                         vid_stride=yolo_config['frame_stride'],
@@ -50,21 +65,23 @@ def yolo(yolo_config, shared_raw_frames, shared_annotated_frames, shared_cropped
                         verbose=False
                     )
 
-                    annotated_dict[stream_name]['annotated_frame'] = (
-                        results[0].plot(), local_frames[stream_name]['raw_frame'][0]
-                    )
-
-                    cropped_dict[stream_name]['cropped_frames'] = [
-                        local_frames[stream_name]['raw_frame'][0][int(box.xyxy[0, 1]):int(box.xyxy[0, 3]), int(box.xyxy[0, 0]):int(box.xyxy[0, 2])]
+                    annotated_frame = results[0].plot()
+                    cropped_frames = [
+                        frame[int(box.xyxy[0, 1]):int(box.xyxy[0, 3]), int(box.xyxy[0, 0]):int(box.xyxy[0, 2])]
                         for result in results
                         for box in result.boxes
                     ]
 
-            with lock:
-                for stream_name in local_frames.keys():
-                    shared_annotated_frames[stream_name] = annotated_dict[stream_name]['annotated_frame']
-                    shared_cropped_frames[stream_name] = cropped_dict[stream_name]['cropped_frames']
-                local_frames = shared_raw_frames.copy()
+                    anno_msg = {'frame': annotated_frame.tolist(), 'timestamp': timestamp}
+                    crop_msg = {'frames': [cf.tolist() for cf in cropped_frames], 'timestamp': timestamp}
+
+                    anno_msgs[stream_name] = anno_msg
+                    crop_msgs[stream_name] = crop_msg
+
+            if anno_msgs:
+                anno_socket.send_json(anno_msgs)
+            if crop_msgs:
+                crop_socket.send_json(crop_msgs)
 
         except Exception as e:
             print(f"A YOLO error occurred: {e}")
