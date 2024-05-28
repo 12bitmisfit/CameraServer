@@ -33,6 +33,8 @@ personal security camera system with people detection and re-identification
 - add support for running multiple feature extration models
 
 ## Whats been updated:
+- removed cosine similarity map
+- rewrote code to use pyzmq instead of shared memory | **Preparing for front end work**
 - update tracker.py and main.py to use tracker.yaml for configurable items | **added a reid.yaml file with a few options**
 - clean up a lot of the dirty/dumb data handling that was implemented to make things functional | **kinda just made things more readable**
 - make dataset creation + updating more configurable and more scalable | **added a no update threshold to mitigate excess bloat + small fixes**
