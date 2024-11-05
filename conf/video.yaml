@@ -1,3 +1,5 @@
+rebroadcast: true
+rebroadcast_start_port: 9400
 streams:
   - name: "Stream1"
     url: "http://localhost:8080/video"
