@@ -33,6 +33,14 @@ personal security camera system with people detection and re-identification
 - add support for running multiple feature extration models
 
 ## Whats been updated:
+
+### 11/4/24
+- Rolled back to older version with cosine similarity map and shared memory instead of ZMQ
+- Added a re-broadcast function that re-broadcasts the input video streams to reduce network traffic
+- Removed the half baked flask stuff
+- Added a basic web interface for viewing all the streams. It is served via fastapi.
+
+### Old
 - removed cosine similarity map
 - rewrote code to use pyzmq instead of shared memory | **Preparing for front end work**
 - update tracker.py and main.py to use tracker.yaml for configurable items | **added a reid.yaml file with a few options**
