@@ -1,5 +1,5 @@
 yolo: true
 reid: true
 web: true
-base_port: 9000
-base_ip: "localhost"
+web_base_url: "localhost"
+web_port: 80

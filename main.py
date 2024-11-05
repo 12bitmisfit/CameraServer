@@ -5,7 +5,7 @@ from utils.video import opncv
 from utils.yolo import yolo
 from utils.tracker import reid
 from utils.rebroadcaster import rebroadcast
-
+from utils.web import web_server
 
 def load_config(file_path):
     with open(file_path, 'r') as file:
@@ -59,7 +59,8 @@ def main():
             processes.append(start_process(yolo, (yolo_config, shared_raw, shared_anno, shared_crop, lock)))
         if server_config['reid']:
             processes.append(start_process(reid, (reid_config, shared_crop, shared_track, lock)))
-
+        if server_config['web']:
+            processes.append(start_process(web_server, (video_config, server_config['web_base_url'], server_config['web_port'])))
         try:
             while True:
                 time.sleep(1)

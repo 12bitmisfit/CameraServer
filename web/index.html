@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic MJPEG Stream Grid</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden; /* Prevent scrolling */
+        }
+        #grid {
+            display: grid;
+            width: 100vw;
+            height: 100vh;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-auto-rows: 1fr;
+        }
+        .stream {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* Ensure the entire stream fits without cropping */
+        }
+    </style>
+</head>
+<body>
+    <div id="grid"></div>
+    <script>
+        fetch('/streams')
+            .then(response => response.json())
+            .then(data => {
+                const streams = data;
+                const gridContainer = document.getElementById('grid');
+
+                streams.forEach((stream, index) => {
+                    const img = document.createElement('img');
+                    img.className = 'stream';
+                    img.src = stream;
+                    img.alt = `Stream ${index + 1}`;
+                    gridContainer.appendChild(img);
+                });
+
+                // Responsive handler to adjust grid and stream sizes
+                function adjustLayout() {
+                    if (streams.length === 1) {
+                        gridContainer.style.gridTemplateColumns = "1fr";
+                    } else {
+                        gridContainer.style.gridTemplateColumns = "repeat(auto-fit, minmax(300px, 1fr))";
+                    }
+                }
+
+                window.addEventListener('resize', adjustLayout);
+                adjustLayout(); // Initial adjustment
+            })
+            .catch(error => console.error('Error fetching streams:', error));
+    </script>
+</body>
+</html>
